@@ -51,9 +51,12 @@ workflows:
 
       - name: İmzalama — kendi private key ile cert+profil oluştur
         script: |
-          set -e
+          set -eo pipefail
+          echo "B64 uzunlugu: ${#CERTIFICATE_PRIVATE_KEY_B64}"
           keychain initialize
-          echo "$CERTIFICATE_PRIVATE_KEY_B64" | base64 --decode > /tmp/cert_key.pem
+          printf '%s' "$CERTIFICATE_PRIVATE_KEY_B64" | openssl base64 -d -A > /tmp/cert_key.pem
+          echo "PEM boyutu: $(wc -c < /tmp/cert_key.pem) bayt"
+          grep -q "PRIVATE KEY" /tmp/cert_key.pem || { echo "HATA: private key bos/bozuk — Codemagic 'ios_signing' grubu + CERTIFICATE_PRIVATE_KEY_B64 secure degiskenini kontrol et"; exit 1; }
           app-store-connect fetch-signing-files "com.genixsoft.servistakip" --type IOS_APP_STORE --certificate-key @file:/tmp/cert_key.pem --create
           keychain add-certificates
           xcode-project use-profiles
