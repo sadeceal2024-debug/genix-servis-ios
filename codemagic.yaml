@@ -1,0 +1,82 @@
+# ============================================================
+#  GENİX iOS — Codemagic CI/CD  (Mac'siz build + App Store upload)
+#  Bu dosya her uygulamanın GitHub reposunun KÖKÜNE konur (codemagic.yaml).
+#  ⚠️ ile işaretli 4 değeri o uygulamaya göre değiştir.
+#  Automatic code signing = ASC API key ile → MacinCloud SSL engelini KOMPLE atlar.
+# ============================================================
+workflows:
+  ios-appstore:
+    name: Genix iOS App Store
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    integrations:
+      app_store_connect: GENIX_ASC_KEY   # Codemagic UI'da eklediğin ASC API key entegrasyonunun ADI
+
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.genixsoft.servistakip
+      vars:
+        XCODE_WORKSPACE: "src/Servis Takip.xcworkspace"
+        XCODE_SCHEME: "Servis Takip"
+        APP_STORE_APPLE_ID: "0000000000"       # ⚠️ 4) ASC > App Information > Apple ID (sayısal)
+      xcode: latest
+      cocoapods: default
+
+    scripts:
+      - name: Info.plist izin metinleri (mic/kamera/foto) garanti et
+        script: |
+          set -e
+          # App hedefinin Info.plist'ini bul (Pods hariç)
+          PLIST=$(find . -name "Info.plist" -not -path "*/Pods/*" -not -path "*/build/*" | head -1)
+          echo "Info.plist: $PLIST"
+          pb() { /usr/libexec/PlistBuddy -c "$1" "$PLIST"; }
+          setkey() {
+            pb "Add :$1 string $2" 2>/dev/null || pb "Set :$1 $2"
+          }
+          setkey NSMicrophoneUsageDescription "Sesli komutla (AL Komut) veri girişi için mikrofon kullanılır."
+          setkey NSCameraUsageDescription "Cihaz ve fiş/belge fotoğrafı çekmek için kamera kullanılır."
+          setkey NSPhotoLibraryUsageDescription "Fotoğraf eklemek için galeri erişimi kullanılır."
+          setkey NSPhotoLibraryAddUsageDescription "Çıktı/belge kaydetmek için galeriye erişim kullanılır."
+          echo "--- doğrulama ---"
+          pb "Print :NSMicrophoneUsageDescription"; pb "Print :NSCameraUsageDescription"
+
+      - name: Pod install (Podfile hangi klasördeyse oraya gir)
+        script: |
+          set -e
+          POD_DIR=$(dirname "$(find . -name Podfile | head -1)")
+          echo "Podfile dizini: $POD_DIR"
+          cd "$POD_DIR"
+          pod install --repo-update
+
+      - name: Otomatik imzalama (ASC API key ile profilleri çek/uygula)
+        script: |
+          xcode-project use-profiles
+
+      - name: Build numarasını otomatik artır (TestFlight çakışması olmasın)
+        script: |
+          set +e
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID")
+          [ -z "$LATEST" ] && LATEST=0
+          NEW=$(($LATEST + 1))
+          echo "Yeni build numarası: $NEW"
+          find . -path ./Pods -prune -o -name "*.xcodeproj" -print | head -1 | xargs dirname | while read d; do
+            cd "$d" && agvtool new-version -all "$NEW" || true
+          done
+
+      - name: IPA derle
+        script: |
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true     # önce TestFlight (kendi iPhone'unda UI login + mic teyidi)
+        # submit_to_app_store: false   # otomatik App Review'a göndermek istersen aç
