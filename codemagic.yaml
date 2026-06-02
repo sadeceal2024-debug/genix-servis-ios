@@ -20,7 +20,7 @@ workflows:
       vars:
         XCODE_WORKSPACE: "src/Servis Takip.xcworkspace"
         XCODE_SCHEME: "Servis Takip"
-        APP_STORE_APPLE_ID: "0000000000"       # ⚠️ 4) ASC > App Information > Apple ID (sayısal)
+        APP_STORE_APPLE_ID: "6775957889"       # Servis — ASC App Information > Apple ID
       xcode: latest
       cocoapods: default
 
@@ -50,8 +50,11 @@ workflows:
           cd "$POD_DIR"
           pod install --repo-update
 
-      - name: Otomatik imzalama (ASC API key ile profilleri çek/uygula)
+      - name: İmzalama dosyalarını çek/oluştur (yoksa --create ile üret)
         script: |
+          app-store-connect fetch-signing-files "com.genixsoft.servistakip" --type IOS_APP_STORE --create
+          keychain initialize
+          keychain add-certificates
           xcode-project use-profiles
 
       - name: Build numarasını otomatik artır (TestFlight çakışması olmasın)
