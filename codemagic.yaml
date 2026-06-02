@@ -54,7 +54,7 @@ workflows:
           set -e
           keychain initialize
           echo "$CERTIFICATE_PRIVATE_KEY_B64" | base64 --decode > /tmp/cert_key.pem
-          app-store-connect fetch-signing-files "com.genixsoft.servistakip" --type IOS_APP_STORE --certificate-key /tmp/cert_key.pem --create
+          app-store-connect fetch-signing-files "com.genixsoft.servistakip" --type IOS_APP_STORE --certificate-key @file:/tmp/cert_key.pem --create
           keychain add-certificates
           xcode-project use-profiles
 
