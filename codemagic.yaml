@@ -14,6 +14,8 @@ workflows:
       app_store_connect: GENIX_ASC_KEY   # Codemagic UI'da eklediğin ASC API key entegrasyonunun ADI
 
     environment:
+      groups:
+        - ios_signing            # Codemagic'te bu grupta: CERTIFICATE_PRIVATE_KEY_B64 (secure)
       vars:
         XCODE_WORKSPACE: "src/Servis Takip.xcworkspace"
         XCODE_SCHEME: "Servis Takip"
@@ -47,10 +49,12 @@ workflows:
           cd "$POD_DIR"
           pod install --repo-update
 
-      - name: İmzalama — sertifika + profil oluştur (--create)
+      - name: İmzalama — kendi private key ile cert+profil oluştur
         script: |
+          set -e
           keychain initialize
-          app-store-connect fetch-signing-files "com.genixsoft.servistakip" --type IOS_APP_STORE --create
+          echo "$CERTIFICATE_PRIVATE_KEY_B64" | base64 --decode > /tmp/cert_key.pem
+          app-store-connect fetch-signing-files "com.genixsoft.servistakip" --type IOS_APP_STORE --certificate-key /tmp/cert_key.pem --create
           keychain add-certificates
           xcode-project use-profiles
 
