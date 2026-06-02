@@ -14,6 +14,9 @@ workflows:
       app_store_connect: GENIX_ASC_KEY   # Codemagic UI'da eklediğin ASC API key entegrasyonunun ADI
 
     environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.genixsoft.servistakip
       vars:
         XCODE_WORKSPACE: "src/Servis Takip.xcworkspace"
         XCODE_SCHEME: "Servis Takip"
@@ -46,13 +49,6 @@ workflows:
           echo "Podfile dizini: $POD_DIR"
           cd "$POD_DIR"
           pod install --repo-update
-
-      - name: İmzalama dosyalarını çek/oluştur (yoksa --create ile üret)
-        script: |
-          app-store-connect fetch-signing-files "com.genixsoft.servistakip" --type IOS_APP_STORE --create
-          keychain initialize
-          keychain add-certificates
-          xcode-project use-profiles
 
       - name: Build numarasını otomatik artır (TestFlight çakışması olmasın)
         script: |
