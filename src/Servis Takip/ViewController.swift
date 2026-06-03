@@ -1,5 +1,7 @@
 import UIKit
 import WebKit
+import Speech
+import AVFoundation
 
 var webView: WKWebView! = nil
 
@@ -272,5 +274,87 @@ extension ViewController: WKScriptMessageHandler {
         if message.name == "push-token" {
             handleFCMToken()
         }
+        if message.name == "alkomutSpeech" {
+            handleAlkomutSpeech(message)
+        }
   }
+}
+
+// ===== AL Komut native konuşma tanıma (SFSpeechRecognizer) =====
+// iOS WKWebView Web Speech API'yi desteklemediği için ses->yazı'yı iPhone'un
+// kendi motoru (dikte/Siri) yapar; çıkan yazı web'deki beyin havuzuna gider.
+private let alkomutRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "tr-TR"))
+private var alkomutAudioEngine: AVAudioEngine?
+private var alkomutRequest: SFSpeechAudioBufferRecognitionRequest?
+private var alkomutTask: SFSpeechRecognitionTask?
+
+extension ViewController {
+    func handleAlkomutSpeech(_ message: WKScriptMessage) {
+        let action = ((message.body as? [String: Any])?["action"] as? String) ?? (message.body as? String) ?? ""
+        if action == "start" { startNativeSpeech() }
+        else if action == "stop" { stopNativeSpeech() }
+    }
+
+    func startNativeSpeech() {
+        SFSpeechRecognizer.requestAuthorization { status in
+            DispatchQueue.main.async {
+                guard status == .authorized else { self.sendSpeechToJS("", true, "izin-yok"); return }
+                self.beginAlkomutRecognition()
+            }
+        }
+    }
+
+    func beginAlkomutRecognition() {
+        alkomutTask?.cancel(); alkomutTask = nil
+        let engine = AVAudioEngine()
+        alkomutAudioEngine = engine
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        alkomutRequest = request
+
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.record, mode: .measurement, options: .duckOthers)
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+        } catch {
+            sendSpeechToJS("", true, "ses-oturumu"); return
+        }
+
+        let inputNode = engine.inputNode
+        let format = inputNode.outputFormat(forBus: 0)
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            request.append(buffer)
+        }
+        engine.prepare()
+        do { try engine.start() } catch { sendSpeechToJS("", true, "motor"); return }
+
+        alkomutTask = alkomutRecognizer?.recognitionTask(with: request) { result, error in
+            if let result = result {
+                self.sendSpeechToJS(result.bestTranscription.formattedString, result.isFinal, nil)
+            }
+            if error != nil || (result?.isFinal ?? false) {
+                self.stopNativeSpeech()
+            }
+        }
+    }
+
+    func stopNativeSpeech() {
+        alkomutAudioEngine?.stop()
+        alkomutAudioEngine?.inputNode.removeTap(onBus: 0)
+        alkomutRequest?.endAudio()
+        alkomutAudioEngine = nil
+        alkomutRequest = nil
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    func sendSpeechToJS(_ text: String, _ isFinal: Bool, _ error: String?) {
+        let jsonText = (try? JSONSerialization.data(withJSONObject: [text]))
+            .flatMap { String(data: $0, encoding: .utf8) }
+            .map { String($0.dropFirst().dropLast()) } ?? "\"\""
+        let errJs = error.map { "'\($0)'" } ?? "null"
+        let js = "window.alkomutNativeResult && window.alkomutNativeResult(\(jsonText), \(isFinal ? "true" : "false"), \(errJs));"
+        DispatchQueue.main.async {
+            webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+    }
 }
