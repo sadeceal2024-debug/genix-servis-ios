@@ -354,7 +354,7 @@ extension ViewController {
         let errJs = error.map { "'\($0)'" } ?? "null"
         let js = "window.alkomutNativeResult && window.alkomutNativeResult(\(jsonText), \(isFinal ? "true" : "false"), \(errJs));"
         DispatchQueue.main.async {
-            webView?.evaluateJavaScript(js, completionHandler: nil)
+            ServisTakip.webView?.evaluateJavaScript(js, completionHandler: nil)
         }
     }
 }
