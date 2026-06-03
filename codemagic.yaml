@@ -38,6 +38,7 @@ workflows:
           setkey NSCameraUsageDescription "Cihaz ve fiş/belge fotoğrafı çekmek için kamera kullanılır."
           setkey NSPhotoLibraryUsageDescription "Fotoğraf eklemek için galeri erişimi kullanılır."
           setkey NSPhotoLibraryAddUsageDescription "Çıktı/belge kaydetmek için galeriye erişim kullanılır."
+          setkey NSSpeechRecognitionUsageDescription "Sesli komut (AL Komut) için konuşma tanıma kullanılır."
           echo "--- doğrulama ---"
           pb "Print :NSMicrophoneUsageDescription"; pb "Print :NSCameraUsageDescription"
 
