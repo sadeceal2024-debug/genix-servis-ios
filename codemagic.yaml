@@ -65,9 +65,12 @@ workflows:
       - name: Build numarasını otomatik artır (TestFlight çakışması olmasın)
         script: |
           set +e
-          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID")
-          [ -z "$LATEST" ] && LATEST=0
-          NEW=$(($LATEST + 1))
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null)
+          if echo "$LATEST" | grep -qE '^[0-9]+$' && [ "$LATEST" -gt 0 ]; then
+            NEW=$(($LATEST + 1))
+          else
+            NEW=$(date +%s)
+          fi
           echo "Yeni build numarası: $NEW"
           find . -path ./Pods -prune -o -name "*.xcodeproj" -print | head -1 | xargs dirname | while read d; do
             cd "$d" && agvtool new-version -all "$NEW" || true
