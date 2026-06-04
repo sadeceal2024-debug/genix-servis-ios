@@ -108,6 +108,9 @@ func handlePushPermission() {
                 returnPermissionResult(isGranted: false)
             case .authorized, .ephemeral, .provisional:
                 returnPermissionResult(isGranted: true)
+                DispatchQueue.main.async {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
             @unknown default:
                 return;
             }
@@ -158,6 +161,11 @@ func handleFCMToken(){
             }
         }   
     })
+}
+
+// Ham APNs cihaz token'ini webview'e 'genix-apns-token' eventi ile iletir (Firebase'siz).
+func sendApnsTokenToWebView(hex: String){
+    checkViewAndEvaluate(event: "genix-apns-token", detail: "'\(hex)'")
 }
 
 func sendPushToWebView(userInfo: [AnyHashable: Any]){
