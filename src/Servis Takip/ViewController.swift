@@ -2,6 +2,7 @@ import UIKit
 import WebKit
 import Speech
 import AVFoundation
+import StoreKit
 
 var webView: WKWebView! = nil
 
@@ -43,6 +44,7 @@ class ViewController: UIViewController, WKNavigationDelegate, UIDocumentInteract
         initWebView()
         initToolbarView()
         loadRootUrl()
+        if #available(iOS 15.0, *) { GenixIAP.shared.startObserving() }
     
         NotificationCenter.default.addObserver(self, selector: #selector(self.keyboardWillHide(_:)), name: UIResponder.keyboardWillHideNotification , object: nil)
         
@@ -277,6 +279,9 @@ extension ViewController: WKScriptMessageHandler {
         if message.name == "alkomutSpeech" {
             handleAlkomutSpeech(message)
         }
+        if message.name == "iap" {
+            handleIAP(message)
+        }
   }
 }
 
@@ -355,6 +360,160 @@ extension ViewController {
         let js = "window.alkomutNativeResult && window.alkomutNativeResult(\(jsonText), \(isFinal ? "true" : "false"), \(errJs));"
         DispatchQueue.main.async {
             ServisTakip.webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+    }
+}
+
+// ===== Uygulama İçi Satın Alma (StoreKit 2) =====
+// Web JS  ->  window.webkit.messageHandlers.iap.postMessage({action, productId})
+// Native  ->  window.genixIAPResult({event, ok, ...})
+// Apple onaylı tek ödeme borusu; iyzico/IBAN/kart iOS'ta KULLANILMAZ.
+extension ViewController {
+    func handleIAP(_ message: WKScriptMessage) {
+        guard #available(iOS 15.0, *) else {
+            ServisTakip.webView?.evaluateJavaScript(
+                "window.genixIAPResult && window.genixIAPResult({event:'error',ok:false,error:'ios15-gerekli'});",
+                completionHandler: nil)
+            return
+        }
+        let body = message.body as? [String: Any] ?? [:]
+        let action = (body["action"] as? String) ?? ""
+        let productId = (body["productId"] as? String) ?? "com.genixsoft.servistakip.pro.monthly"
+        switch action {
+        case "products": GenixIAP.shared.products([productId])
+        case "purchase": GenixIAP.shared.purchase(productId)
+        case "restore":  GenixIAP.shared.restore()
+        case "status":   GenixIAP.shared.status()
+        default: break
+        }
+    }
+}
+
+@available(iOS 15.0, *)
+final class GenixIAP {
+    static let shared = GenixIAP()
+    private var updatesTask: Task<Void, Never>? = nil
+    private let iso = ISO8601DateFormatter()
+
+    // Web'e sonuç gönder
+    private func emit(_ event: String, _ payload: [String: Any]) {
+        var data = payload
+        data["event"] = event
+        let json = (try? JSONSerialization.data(withJSONObject: data))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        let js = "window.genixIAPResult && window.genixIAPResult(\(json));"
+        DispatchQueue.main.async {
+            ServisTakip.webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+    }
+
+    // Yenileme / dışarıda yapılan satın alma güncellemelerini dinle
+    func startObserving() {
+        guard updatesTask == nil else { return }
+        updatesTask = Task.detached { [weak self] in
+            for await update in Transaction.updates {
+                if case .verified(let transaction) = update {
+                    await self?.handleVerified(transaction, source: "update")
+                    await transaction.finish()
+                }
+            }
+        }
+    }
+
+    private func handleVerified(_ t: Transaction, source: String) async {
+        emit("purchase", [
+            "ok": true,
+            "productId": t.productID,
+            "transactionId": String(t.id),
+            "originalTransactionId": String(t.originalID),
+            "purchaseDate": iso.string(from: t.purchaseDate),
+            "expirationDate": t.expirationDate.map { iso.string(from: $0) } ?? "",
+            "source": source
+        ])
+    }
+
+    // Ürün bilgisi (fiyat/ad) getir
+    func products(_ ids: [String]) {
+        Task {
+            do {
+                let products = try await Product.products(for: ids)
+                let list = products.map { p -> [String: Any] in
+                    [
+                        "productId": p.id,
+                        "displayName": p.displayName,
+                        "description": p.description,
+                        "displayPrice": p.displayPrice
+                    ]
+                }
+                emit("products", ["ok": true, "products": list])
+            } catch {
+                emit("products", ["ok": false, "error": "\(error)"])
+            }
+        }
+    }
+
+    // Satın al
+    func purchase(_ productId: String) {
+        Task {
+            do {
+                let products = try await Product.products(for: [productId])
+                guard let product = products.first else {
+                    emit("purchase", ["ok": false, "error": "urun-bulunamadi", "productId": productId]); return
+                }
+                let result = try await product.purchase()
+                switch result {
+                case .success(let verification):
+                    switch verification {
+                    case .verified(let transaction):
+                        await handleVerified(transaction, source: "purchase")
+                        await transaction.finish()
+                    case .unverified(_, let err):
+                        emit("purchase", ["ok": false, "error": "dogrulanamadi: \(err)", "productId": productId])
+                    }
+                case .userCancelled:
+                    emit("purchase", ["ok": false, "cancelled": true, "productId": productId])
+                case .pending:
+                    emit("purchase", ["ok": false, "pending": true, "productId": productId])
+                @unknown default:
+                    emit("purchase", ["ok": false, "error": "bilinmeyen", "productId": productId])
+                }
+            } catch {
+                emit("purchase", ["ok": false, "error": "\(error)", "productId": productId])
+            }
+        }
+    }
+
+    // Satın alımları geri yükle (Apple zorunlu)
+    func restore() {
+        Task {
+            try? await AppStore.sync()
+            var found: [[String: Any]] = []
+            for await result in Transaction.currentEntitlements {
+                if case .verified(let t) = result {
+                    found.append([
+                        "productId": t.productID,
+                        "transactionId": String(t.id),
+                        "expirationDate": t.expirationDate.map { iso.string(from: $0) } ?? ""
+                    ])
+                }
+            }
+            emit("restore", ["ok": true, "entitlements": found])
+        }
+    }
+
+    // Aktif abonelik durumu
+    func status() {
+        Task {
+            var active: [[String: Any]] = []
+            for await result in Transaction.currentEntitlements {
+                if case .verified(let t) = result {
+                    active.append([
+                        "productId": t.productID,
+                        "expirationDate": t.expirationDate.map { iso.string(from: $0) } ?? ""
+                    ])
+                }
+            }
+            emit("status", ["ok": true, "active": active, "isActive": !active.isEmpty])
         }
     }
 }
