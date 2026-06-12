@@ -133,11 +133,12 @@
 			};
 			buildConfigurationList = CD89F884237E9D9200C436A1 /* Build configuration list for PBXProject "Servis Takip" */;
 			compatibilityVersion = "Xcode 11.0";
-			developmentRegion = en;
+			developmentRegion = tr;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
+				tr,
 			);
 			mainGroup = CD89F880237E9D9200C436A1;
 			productRefGroup = CD89F880237E9D9200C436A1;
@@ -380,7 +381,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1;
+				MARKETING_VERSION = 1.1;
 				CURRENT_PROJECT_VERSION = 1;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.genixsoft.servistakip";
 				PRODUCT_NAME = "ServisTakip";
@@ -408,7 +409,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1;
+				MARKETING_VERSION = 1.1;
 				CURRENT_PROJECT_VERSION = 1;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.genixsoft.servistakip";
 				PRODUCT_NAME = "ServisTakip";

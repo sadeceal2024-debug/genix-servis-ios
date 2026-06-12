@@ -9,7 +9,11 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Capture Video by user request</string>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<string>tr</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>tr</string>
+	</array>
 	<key>CFBundleDisplayName</key>
 	<string>Servis Takip</string>
 	<key>CFBundleExecutable</key>
